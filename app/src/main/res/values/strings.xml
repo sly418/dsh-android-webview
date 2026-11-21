@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DSH WebView</string>
+    <string name="channel_name">DeepSeek Harness 服务</string>
+    <string name="status_starting">正在启动 DeepSeek Harness…</string>
+    <string name="status_installing">正在安装内置运行时…</string>
+    <string name="status_ready">DeepSeek Harness 已就绪</string>
+    <string name="status_failed">启动失败</string>
+    <string name="retry">重试</string>
+    <string name="view_log">查看运行日志</string>
+    <string name="notification_permission_rationale">需要通知权限来显示本地服务运行状态；拒绝后服务仍会运行，但通知可能不显示。</string>
+    <string name="notification_permission_denied">已拒绝通知权限：服务仍会运行，但通知可能不显示。</string>
+</resources>

@@ -1,0 +1,23 @@
+# 本地 SDK 路径（含本机用户名，切勿上传）
+local.properties
+
+# Gradle / IDE
+.gradle/
+.idea/
+*.iml
+*.swp
+
+# 构建产物（默认不上传；如需随仓库提供 APK，见 README 说明）
+build/
+app/build/
+
+# 签名密钥与敏感文件
+*.jks
+*.keystore
+keystore.properties
+secrets.properties
+local.properties
+
+# 系统
+.DS_Store
+Thumbs.db

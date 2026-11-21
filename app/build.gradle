@@ -1,0 +1,42 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.deepseek.dshwebview'
+    compileSdk 37
+
+    defaultConfig {
+        applicationId 'com.deepseek.dshwebview'
+        minSdk 26
+        targetSdk 37
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // Required so the bundled Node ELF is extracted into nativeLibraryDir,
+    // the only directory where Android 10+ permits execve for a normal app.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+}
+
+dependencies {
+    // Shizuku API (local AARs to avoid network dependency during build).
+    implementation files('libs/shizuku-api-13.1.5.aar')
+    implementation files('libs/shizuku-provider-13.1.5.aar')
+}
