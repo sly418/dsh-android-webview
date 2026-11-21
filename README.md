@@ -2,7 +2,7 @@
 
 一个把 [DeepSeek Harness (dsh)](https://github.com/deepseek-ai) 的 Web UI 与运行时打包进 Android 应用的壳，支持在 **Shizuku shell 权限**下以 `uid=2000(shell)` 运行，从而在手机上获得接近桌面 shell 的体验（含可用的 bash）。
 
-> 本项目与 DeepSeek 官方无隶属关系，仅是技术上的集成封装。dsh 的商标与名称归 DeepSeek 所有。
+> ⚠️ **重要声明**：本项目是**独立的非官方项目**，与 **腾讯、混元 AI、WorkBuddy、DeepSeek** 等各方**无隶属、授权或背书关系**。署名中的 "Tencent Hunyuan Hy" 仅用于标识生成代码的 AI 助手身份，不构成官方背书。商标、角色、责任等完整声明见 [`DISCLAIMER.md`](DISCLAIMER.md)。
 
 ## 功能
 
@@ -23,10 +23,13 @@
 - 英文法律正文：[`LICENSE`](LICENSE)
 - 中文解读（非官方）：[`LICENSE.zh-CN.md`](LICENSE.zh-CN.md)
 - 第三方组件声明：[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
+- 非官方关系 / 角色 / 商标 / 责任声明：[`DISCLAIMER.md`](DISCLAIMER.md)
 
 **共同作者 / 许可人**：WorkBuddy (Tencent Hunyuan Hy)、sly418（GitHub: <https://github.com/sly418>）
 
 两位均为本项目作者。WorkBuddy 主要承担设计与实现，sly418 提供需求、真机环境、测试与构建配置。两位作者共同享有著作权并可依法维权。
+
+> 关于 WorkBuddy 署名中 "Tencent Hunyuan Hy" 的含义（仅标识 AI 助手身份、非官方背书）及完整法律边界，见 [`DISCLAIMER.md` 第二节：角色声明](DISCLAIMER.md#二角色声明--role-and-authorship-disclosure)。
 
 > 注意：禁止商用的协议不属于 OSI 定义的开源协议，GitHub 会显示为 "Other"。这是许可条款的必然结果。
 

@@ -2,6 +2,8 @@
 
 DshWebView Android Shell 打包或依赖了以下第三方组件。本项目自身的许可（PolyForm Noncommercial 1.0.0）**仅覆盖本项目编写的代码与构建脚本**，不影响这些组件各自的许可证。请在重新分发时一并遵守它们的条款。
 
+关于非官方关系、商标使用与责任边界，另见 [`DISCLAIMER.md`](DISCLAIMER.md)。
+
 ## 1. DeepSeek Harness（dsh）运行时与 Web 前端
 
 - **来源**：npm 包 `@deepseek-ai/*`（版本 `0.2.2-rc.5`），作为 `assets/runtime/dsh.zip` 打包进 APK。

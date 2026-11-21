@@ -10,6 +10,8 @@
 
 本协议**不覆盖** APK 内打包的第三方组件——包括 DeepSeek Harness (dsh)、Node.js、Shizuku、Termux bash 和整套 npm 依赖树——它们各按自己的许可条款授权，详见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。许可人对这些第三方组件不主张版权，也无权授予任何权利。
 
+关于非官方关系、作者角色、商标使用与责任限制的声明，见 [`DISCLAIMER.md`](DISCLAIMER.md)。该文件仅作解释性引用，不改变本协议的任何条款。
+
 特别地，**dsh 的版权归 DeepSeek、采用 MIT 许可**：任何人都可以直接从 DeepSeek 获取 dsh 并按 MIT 许可使用（包括商用），本协议对此不作任何限制。许可人**不会、也无法**把 dsh 或其他第三方组件的商用权授予任何人——这不是本项目能决定的事。
 
 ## 一句话概括
