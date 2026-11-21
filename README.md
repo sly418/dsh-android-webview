@@ -42,14 +42,37 @@
 
 ## 构建
 
-需要 Android SDK（compileSdk 37、build-tools 36）与 JDK 17+。
+**所有内置资源已包含在仓库中**（通过 Git LFS）：dsh.zip、shellruntime.zip、原生库 .so、Shizuku AAR 都已就位，**无需额外下载或准备脚本**。clone 后直接构建即可。
+
+### 环境要求
+
+- **JDK 17+**
+- **Android SDK**：compileSdk 37、build-tools 36.0.0、Android Gradle Plugin 9.5.2
+- **Git LFS**（clone 时必须安装，否则大文件只有指针）
+
+### 方式一：local.properties（推荐）
+
+在项目根目录创建 `local.properties`（该文件已被 gitignore 排除，不会上传），内容：
+
+```properties
+sdk.dir=/你的/Android/Sdk 路径
+```
+
+Windows 示例：`sdk.dir=C\:\\Users\\你的用户名\\AppData\\Local\\Android\\Sdk`（注意反斜杠转义）。
+然后用 JDK 17+ 运行：
 
 ```bash
-# 首次构建前需准备内置资源：dsh.zip / node deb / termux debs / shizuku AAR
-# 相关脚本位于上级目录 tools/（构建时按需运行）
-
-export JAVA_HOME=/path/to/jdk
 ./gradlew assembleDebug
+```
+
+### 方式二：环境变量
+
+不创建 local.properties 也可以，直接设置环境变量：
+
+```bash
+export JAVA_HOME=/path/to/jdk17      # Windows: set JAVA_HOME=...
+export ANDROID_HOME=/path/to/android-sdk
+./gradlew assembleDebug              # Windows: gradlew.bat assembleDebug
 ```
 
 产物：`app/build/outputs/apk/debug/app-debug.apk`
