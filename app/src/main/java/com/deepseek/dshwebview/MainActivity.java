@@ -57,6 +57,7 @@ public class MainActivity extends Activity {
     private String loadedUrl;
     private ValueCallback<Uri[]> filePathCallback;
     private boolean shizukuGrantHandled;
+    private boolean recoveringSession;
 
     private final ServiceConnection connection = new ServiceConnection() {
         @Override
@@ -88,7 +89,12 @@ public class MainActivity extends Activity {
     private final Shizuku.OnRequestPermissionResultListener shizukuPermListener =
             (requestCode, grantResult) -> {
                 if (grantResult == PackageManager.PERMISSION_GRANTED) {
-                    if (shizukuGrantHandled) return;
+                    // Always restart on (re)grant: Shizuku may have restarted and
+                    // re-authorized while we were in shell mode. The service's
+                    // generation gate makes repeated restarts harmless.
+                    if (shizukuGrantHandled && "shizuku".equals(AppState.getMode(this))) {
+                        return; // already running in shell mode, nothing changed
+                    }
                     shizukuGrantHandled = true;
                     Toast.makeText(this, "Shizuku 已授权，正在以 shell 权限重启…", Toast.LENGTH_SHORT).show();
                     if (service != null) {
@@ -100,6 +106,16 @@ public class MainActivity extends Activity {
                     Toast.makeText(this, "未获得 Shizuku 授权，将使用普通模式", Toast.LENGTH_LONG).show();
                 }
             };
+
+    /**
+     * Shizuku service can die/restart (e.g. app update). When its binder
+     * returns we re-check permission; if granted, restart the runtime so the
+     * app moves back to shell mode automatically.
+     */
+    private final Shizuku.OnBinderDeadListener binderDeadListener = () -> {
+        // Mark that a re-grant should be acted on even if we previously did so.
+        shizukuGrantHandled = false;
+    };
 
     // The binder arrives once per process. Only ask for permission, never
     // restart here — the permission callback (or normal startup) handles that.
@@ -136,8 +152,15 @@ public class MainActivity extends Activity {
         configureWebView();
         requestNotificationPermission();
 
+        // Detect a previous session that was interrupted (service killed while
+        // in background). The service will restart; we just inform the user.
+        int attempts = AppState.getLaunchAttempts(this);
+        String prevState = AppState.getLastState(this);
+        recoveringSession = attempts > 1 && !"READY".equals(prevState);
+
         try {
             Shizuku.addBinderReceivedListenerSticky(binderReceivedListener);
+            Shizuku.addBinderDeadListener(binderDeadListener);
             Shizuku.addRequestPermissionResultListener(shizukuPermListener);
             requestShizukuPermission();
         } catch (Throwable ignored) {
@@ -296,6 +319,10 @@ public class MainActivity extends Activity {
         if (state == null) return;
         switch (state) {
             case READY:
+                if (recoveringSession) {
+                    recoveringSession = false;
+                    Toast.makeText(this, "已从后台恢复，运行环境正常", Toast.LENGTH_SHORT).show();
+                }
                 showWithAnim(statusBar, R.anim.slide_in_top);
                 statusText.setText(R.string.status_ready);
                 hideWithAnim(errorPanel, R.anim.fade_out);
@@ -459,6 +486,7 @@ public class MainActivity extends Activity {
         }
         try {
             Shizuku.removeBinderReceivedListener(binderReceivedListener);
+            Shizuku.removeBinderDeadListener(binderDeadListener);
             Shizuku.removeRequestPermissionResultListener(shizukuPermListener);
         } catch (Throwable ignored) {
         }

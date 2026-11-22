@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -28,6 +29,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,7 +39,13 @@ public class DshService extends Service {
 
     private static final String CHANNEL_ID = "dsh-webview";
     private static final String BASE_URL = "http://127.0.0.1:3080/";
-    private static final int READY_TIMEOUT_MS = 180_000;
+    private static final long READY_TIMEOUT_MS = 180_000L;
+    private static final long STOP_WAIT_MS = 5_000L;
+    private static final long WAKELOCK_TIMEOUT_MS = 5 * 60 * 1000L;
+    // A freshly spawned process (especially ShizukuRemoteProcess) may report
+    // isAlive()==false transiently during startup. Do not declare failure
+    // before this grace period elapses.
+    private static final long START_GRACE_MS = 8_000L;
 
     public enum State { IDLE, INSTALLING, STARTING, READY, FAILED }
 
@@ -56,12 +65,20 @@ public class DshService extends Service {
     private final CopyOnWriteArrayList<Listener> listeners = new CopyOnWriteArrayList<>();
     private final Pattern urlPattern = Pattern.compile("https?://[^\\s\"'<>]+");
     private final ArrayDeque<String> recentLines = new ArrayDeque<>();
+    private final Object processLock = new Object();
+    private final AtomicBoolean startGate = new AtomicBoolean(false);
+    private final AtomicInteger generation = new AtomicInteger(0);
+    // Silent self-heal counter: if a fresh launch never becomes ready, restart
+    // once in the background WITHOUT showing an error panel, then fail on the
+    // second attempt. Avoids the transient error flash on re-entry.
+    private final AtomicBoolean silentRetryUsed = new AtomicBoolean(false);
 
     private Process process;
     private volatile State state = State.IDLE;
     private volatile String message = "";
     private volatile String lastError = "";
     private volatile String advertisedUrl;
+    private PowerManager.WakeLock wakeLock;
 
     @Override
     public void onCreate() {
@@ -73,6 +90,8 @@ public class DshService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         startRuntime();
+        // START_STICKY: if the system kills the service, it is recreated and
+        // this method runs again — startRuntime() will restart the child.
         return START_STICKY;
     }
 
@@ -84,15 +103,8 @@ public class DshService extends Service {
     @Override
     public void onDestroy() {
         listeners.clear();
-        if (process != null) {
-            process.destroy();
-            try {
-                if (!process.waitFor(3, TimeUnit.SECONDS)) process.destroyForcibly();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            process = null;
-        }
+        stopProcess();
+        releaseWakeLock();
         executor.shutdownNow();
         stopForeground(true);
         super.onDestroy();
@@ -148,16 +160,18 @@ public class DshService extends Service {
         listeners.remove(listener);
     }
 
+    /**
+     * Restart the runtime safely. The old process is destroyed AND waited for
+     * before a new one is started, so the new Node cannot collide with the
+     * previous one still holding port 3080 — the root cause of the
+     * "process hasn't exited" race seen when re-entering the app.
+     */
     public void restart() {
-        if (process != null) {
-            // ShizukuRemoteProcess can throw "process hasn't exited" when the
-            // process is already gone; tearing down must never abort a restart.
-            try {
-                process.destroyForcibly();
-            } catch (Throwable ignored) {
-            }
-            process = null;
-        }
+        // Invalidate any in-flight launch and release the gate so a restart
+        // requested mid-startup is not swallowed by the old launch's gate.
+        generation.incrementAndGet();
+        startGate.set(false);
+        stopProcess();
         advertisedUrl = null;
         synchronized (this) {
             recentLines.clear();
@@ -165,9 +179,60 @@ public class DshService extends Service {
         startRuntime();
     }
 
+    /**
+     * Terminate the current child process and wait for it to actually exit.
+     * ShizukuRemoteProcess may throw from destroy()/destroyForcibly()/isAlive()
+     * when the process is already gone; every step is guarded.
+     */
+    private void stopProcess() {
+        Process p;
+        synchronized (processLock) {
+            p = process;
+            process = null;
+        }
+        if (p == null) return;
+
+        try {
+            if (isAlive(p)) p.destroy();
+        } catch (Throwable ignored) {
+        }
+        try {
+            if (!p.waitFor(STOP_WAIT_MS, TimeUnit.MILLISECONDS)) {
+                try {
+                    if (isAlive(p)) p.destroyForcibly();
+                } catch (Throwable ignored) {
+                }
+                try {
+                    p.waitFor(STOP_WAIT_MS, TimeUnit.MILLISECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** isAlive() can itself throw on a dead Shizuku remote process. */
+    private static boolean isAlive(Process p) {
+        try {
+            return p.isAlive();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     private void startRuntime() {
-        if (state == State.INSTALLING || state == State.STARTING) return;
+        // Atomic gate prevents duplicate starts from onStartCommand + restart,
+        // and from repeated bind events after process recreation.
+        if (!startGate.compareAndSet(false, true)) return;
+
+        final int myGeneration = generation.incrementAndGet();
+        AppState.noteLaunchAttempt(this);
+        acquireWakeLock();
         setState(State.INSTALLING, getString(R.string.status_installing));
+
         executor.execute(() -> {
             try {
                 File logs = RuntimeInstaller.logs(this);
@@ -176,10 +241,11 @@ public class DshService extends Service {
                 if (shizuku) {
                     // Full shell-privileged mode: Shizuku extracts the runtime
                     // from our APK into a shared dir and starts Node as uid 2000.
-                    setState(State.STARTING, "正在以 Shizuku (shell) 权限启动…");
+                    setState(State.STARTING, "正在以 Shizuku (shell) 权限启动…", myGeneration);
                     try {
                         p = ShizukuLauncher.start(this, new File(logs, "dsh-shell.log"), 3080);
                         appendLine(new File(logs, "dsh-shell.log"), "[info] Shizuku shell 模式已启动");
+                        AppState.saveMode(this, "shizuku");
                     } catch (Exception se) {
                         // Shizuku failed; record why and fall back to normal mode
                         // so the app still works.
@@ -192,8 +258,16 @@ public class DshService extends Service {
                     p = null;
                 }
                 if (!shizuku) {
+                    // Preflight: verify all bundled runtime pieces before spawn.
+                    EnvironmentCheck.Result check = EnvironmentCheck.checkNormalMode(this);
+                    if (!check.ok) throw new IOException("运行环境自检失败：\n" + check.detail);
+
                     // Fallback: normal app-privileged mode from private storage.
-                    RuntimeInstaller.ensureInstalled(this, msg -> setState(State.INSTALLING, msg));
+                    RuntimeInstaller.ensureInstalled(this, msg -> setState(State.INSTALLING, msg, myGeneration));
+                    // Re-check after installation (assets may have just been extracted).
+                    check = EnvironmentCheck.checkNormalMode(this);
+                    if (!check.ok) throw new IOException("运行环境自检失败：\n" + check.detail);
+
                     File node = RuntimeInstaller.nodeExecutable(this);
                     File nativeDir = new File(getApplicationInfo().nativeLibraryDir);
                     File dshEntry = new File(RuntimeInstaller.dsh(this),
@@ -242,41 +316,85 @@ public class DshService extends Service {
                     env.put("NODE_OPTIONS", existingNodeOptions == null || existingNodeOptions.isEmpty()
                             ? shimOption : existingNodeOptions + " " + shimOption);
                     p = pb.start();
+                    AppState.saveMode(this, "normal");
                 }
-                setState(State.STARTING, "正在启动 DeepSeek Harness Web UI…");
-                process = p;
-                readOutput(p, new File(logs, "dsh.log"));
 
-                long deadline = System.currentTimeMillis() + READY_TIMEOUT_MS;
-                while (System.currentTimeMillis() < deadline) {
-                    if (!p.isAlive()) {
-                        int code;
-                        try {
-                            code = p.exitValue();
-                        } catch (IllegalThreadStateException ignored) {
-                            code = -1;
-                        }
-                        throw new IOException("Node 进程已退出，退出码=" + code
-                                + "\n--- 最近日志 ---\n" + getLogTail());
+                // A restart may have superseded this launch while we were
+                // extracting/installing. Do not publish a stale process.
+                if (myGeneration != generation.get()) {
+                    try {
+                        if (isAlive(p)) p.destroyForcibly();
+                    } catch (Throwable ignored) {
                     }
+                    return;
+                }
+
+                setState(State.STARTING, "正在启动 DeepSeek Harness Web UI…", myGeneration);
+                synchronized (processLock) {
+                    process = p;
+                }
+                readOutput(p, new File(logs, "dsh.log"), myGeneration);
+
+                final long launchStart = System.currentTimeMillis();
+                long deadline = launchStart + READY_TIMEOUT_MS;
+                long lastProcessCheck = 0;
+                while (System.currentTimeMillis() < deadline) {
+                    if (myGeneration != generation.get()) return; // superseded
+
+                    // The ONLY success signal is a responding server plus a
+                    // captured tokenized URL. ShizukuRemoteProcess.isAlive()
+                    // is unreliable (it can report false while the process is
+                    // actually starting), so it must NOT gate the UI state.
+                    if (isServerUp() && advertisedUrl != null) break;
+
                     // The root URL without a launch token is rejected by dsh's
                     // browser-session auth. Wait for the tokenized URL printed
                     // by dsh before telling WebView to load anything.
-                    if (isServerUp() && advertisedUrl != null) break;
                     Thread.sleep(400);
+
+                    // Detect a genuinely dead process only as a diagnostic
+                    // hint, never as an immediate failure. Re-check sparsely.
+                    long now = System.currentTimeMillis();
+                    if (now - lastProcessCheck > 3000 && now - launchStart > START_GRACE_MS
+                            && !isAlive(p) && !isServerUp()) {
+                        lastProcessCheck = now;
+                        int code;
+                        try {
+                            code = p.exitValue();
+                        } catch (Throwable ignored) {
+                            code = -1;
+                        }
+                        appendLine(new File(logs, "dsh.log"),
+                                "[warn] 进程可能已退出 code=" + code + "，继续等待服务就绪…");
+                    }
+                }
+                if (myGeneration != generation.get()) return;
+                // Loop ended without a ready signal. Silent self-heal once:
+                // the parent likely died from a transient port clash. Restart
+                // without surfacing FAILED so no error panel flashes.
+                if (silentRetryUsed.compareAndSet(false, true)) {
+                    appendLine(new File(logs, "dsh.log"), "[info] 服务未就绪，静默自愈重启一次");
+                    stopProcess();
+                    restart();
+                    return;
                 }
                 if (!isServerUp()) throw new IOException("服务在 3 分钟内未就绪，请查看 logs/dsh.log");
                 if (advertisedUrl == null) {
                     throw new IOException("服务已启动但未捕获到 tokenized URL，请查看 logs/dsh.log");
                 }
 
-                setState(State.READY, getString(R.string.status_ready));
+                setState(State.READY, getString(R.string.status_ready), myGeneration);
                 final String readyUrl = advertisedUrl;
+                AppState.saveUrl(this, readyUrl);
+                AppState.saveState(this, "READY", "");
+                AppState.clearLaunchAttempts(this);
                 main.post(() -> {
                     for (Listener l : listeners) l.onUrl(readyUrl);
                 });
                 updateNotification("DeepSeek Harness 运行中");
+                releaseWakeLock();
             } catch (Exception e) {
+                if (myGeneration != generation.get()) return;
                 String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 if (detail.toLowerCase().contains("permission denied")
                         || detail.contains("CANNOT LINK")) {
@@ -287,13 +405,21 @@ public class DshService extends Service {
                     if (!tail.isEmpty()) detail += "\n--- 最近日志 ---\n" + tail;
                 }
                 lastError = detail;
-                setState(State.FAILED, detail);
+                setState(State.FAILED, detail, myGeneration);
+                AppState.saveState(this, "FAILED", detail);
                 updateNotification("DeepSeek Harness 启动失败");
+                releaseWakeLock();
+            } finally {
+                // Only the current generation may release the gate. A stale
+                // launch finishing late must not unlock a newer launch.
+                if (myGeneration == generation.get()) {
+                    startGate.set(false);
+                }
             }
         });
     }
 
-    private void readOutput(Process p, File logFile) {
+    private void readOutput(Process p, File logFile, final int myGeneration) {
         new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
                  PrintWriter out = new PrintWriter(new OutputStreamWriter(new FileOutputStream(logFile, true)))) {
@@ -307,7 +433,8 @@ public class DshService extends Service {
                         Matcher m = urlPattern.matcher(clean);
                         if (m.find()) {
                             String found = cleanUrl(m.group());
-                            if (found != null && !found.equals(advertisedUrl)) {
+                            if (found != null && !found.equals(advertisedUrl)
+                                    && myGeneration == generation.get()) {
                                 advertisedUrl = found;
                                 final String readyUrl = found;
                                 main.post(() -> {
@@ -358,6 +485,12 @@ public class DshService extends Service {
     }
 
     private void setState(State s, String msg) {
+        setState(s, msg, generation.get());
+    }
+
+    /** State change is ignored if a newer launch generation has taken over. */
+    private void setState(State s, String msg, int myGeneration) {
+        if (myGeneration != generation.get()) return;
         state = s;
         message = msg == null ? "" : msg;
         final State fs = s;
@@ -366,6 +499,30 @@ public class DshService extends Service {
             for (Listener l : listeners) l.onState(fs, fm);
         });
     }
+
+    // ---- WakeLock: keep the CPU on during startup, always release afterwards ----
+
+    private void acquireWakeLock() {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm == null) return;
+            if (wakeLock == null || !wakeLock.isHeld()) {
+                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "dshwebview:startup");
+                wakeLock.acquire(WAKELOCK_TIMEOUT_MS);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void releaseWakeLock() {
+        try {
+            if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+        } catch (Throwable ignored) {
+        }
+        wakeLock = null;
+    }
+
+    // ---- Foreground notification ----
 
     private void createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

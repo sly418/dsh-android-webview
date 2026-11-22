@@ -151,6 +151,18 @@ public final class ShizukuLauncher {
                 + "export NODE_EXTRA_CA_CERTS=$D/ca-bundle.pem\n"
                 + "export NODE_OPTIONS=--require=$SHIM\n"
                 + "export NODE_NO_WARNINGS=1 BROWSER=/system/bin/false TERM=xterm-256color\n"
+                // A previous shell-mode Node can linger ~2s after the app
+                // process is force-stopped (it runs as uid 2000, outside the
+                // app's process group). If it still holds port 3080, the new
+                // Node exits immediately with EADDRINUSE. Reap stale instances
+                // before exec, then wait for the port to be free.
+                + "for pid in $(ps -A -o pid,comm 2>/dev/null | awk '$2 ~ /libnodeexec/ {print $1}'); do\n"
+                + "  if [ \"$pid\" != \"$$\" ]; then kill -9 \"$pid\" 2>/dev/null; fi\n"
+                + "done\n"
+                + "i=0; while [ $i -lt 20 ]; do\n"
+                + "  if ! (echo > /dev/tcp/127.0.0.1/" + port + ") >/dev/null 2>&1; then break; fi\n"
+                + "  i=$((i+1)); sleep 0.2\n"
+                + "done\n"
                 + "cd $D/workspace\n"
                 + "exec \"$LIB/libnodeexec.so\" --expose-internals --require \"$SHIM\" \"$ENTRY\""
                 + " --profile web --no-open --host 127.0.0.1 --port " + port + "\n";
