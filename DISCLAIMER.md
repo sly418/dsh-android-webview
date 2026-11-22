@@ -46,6 +46,8 @@ This project is **not** an official product, official derivative, or official di
 
 两位作者共同享有本项目原创部分的著作权，并可依法维权。AI 助手作为署名作者的事实，不影响人类共同作者对项目主张权利。
 
+> **参考法律依据**：《中华人民共和国著作权法》第十四条规定"两人以上合作创作的作品，著作权由合作作者共同享有"。本项目两位署名作者依此共同享有原创部分的著作权。（条文经国家法律法规知识库检索核验，状态：有效；详见文末「参考法律依据」）
+
 **English**
 
 This project is co-authored by **WorkBuddy (Tencent Hunyuan Hy)** and **sly418** (GitHub: <https://github.com/sly418>) as joint authors. The order of attribution does not imply any difference in rights or contribution weight.
@@ -55,6 +57,8 @@ This project is co-authored by **WorkBuddy (Tencent Hunyuan Hy)** and **sly418**
 - **sly418** is a human developer who provided requirements definition, real-device environment, testing and validation, and build configuration.
 
 Both authors jointly hold the copyright in the original portions of this project and may enforce their rights accordingly. The fact that an AI assistant is named as a co-author does not diminish the human co-author's rights over the project.
+
+> **Reference legal basis**: Article 14 of the *Copyright Law of the People's Republic of China* provides that "where a work is jointly created by two or more persons, the copyright therein shall be jointly enjoyed by the co-authors." The two named authors of this project jointly hold the copyright in its original portions accordingly. (Text verified via the national laws and regulations knowledge base; status: in force. See "Reference Legal Basis" at the end.)
 
 ---
 
@@ -69,6 +73,8 @@ Both authors jointly hold the copyright in the original portions of this project
 - 本项目未使用上述权利人的商标作为项目标识、Logo 或商业 branding，未将其用于任何商业宣传。
 - 若任何权利人认为本项目的使用方式不当，请通过 GitHub issue 联系作者，作者将善意评估并作出调整。
 
+> **参考法律依据**：《中华人民共和国商标法》第五十九条规定，注册商标中含有直接表示商品功能、用途等特点的要素时，"注册商标专用权人无权禁止他人正当使用"。本项目对上述名称的使用属说明技术来源与集成对象的正当使用。（条文经国家法律法规知识库检索核验，状态：有效；完整原文见文末「参考法律依据」）
+
 **English**
 
 All trademarks, service marks, product names, and brand names mentioned or referenced in this project — including but not limited to **Tencent, Hunyuan, WorkBuddy, DeepSeek, Shizuku, Node.js, Termux, Android, and GitHub** — are the property of their respective owners.
@@ -77,6 +83,8 @@ All trademarks, service marks, product names, and brand names mentioned or refer
 - Such use **does not constitute** any grant, transfer, license, or affiliation, nor does it indicate support or endorsement by the respective owners.
 - This project does not use those trademarks as its own project identity, logo, or commercial branding, nor for any commercial promotion.
 - If any rights holder believes the use here is inappropriate, please contact the authors via a GitHub issue; the authors will evaluate in good faith and make adjustments.
+
+> **Reference legal basis**: Article 59 of the *Trademark Law of the People's Republic of China* provides that where a registered mark contains elements directly indicating a product's functions, uses, or other characteristics, "the exclusive right holder shall have no right to prohibit others from making legitimate use thereof." The use of such names in this project constitutes legitimate use for describing technical provenance and integration targets. (Text verified via the national laws and regulations knowledge base; status: in force. See "Reference Legal Basis" at the end.)
 
 ---
 
@@ -102,7 +110,43 @@ All trademarks, service marks, product names, and brand names mentioned or refer
 
 ---
 
-## 五、联系方式 / Contact
+## 五、参考法律依据 / Reference Legal Basis
+
+> 本节条文经**国家法律法规知识库检索**获取并核对效力状态，作为上述声明的参考依据。**这不是正式法律意见**，具体适用以官方最新文本及司法实践为准；涉及争议请咨询执业律师。
+
+### 5.1 《中华人民共和国著作权法》第十四条（合作作品）
+
+> 两人以上合作创作的作品，著作权由合作作者共同享有。没有参加创作的人，不能成为合作作者。
+> 合作作品的著作权由合作作者通过协商一致行使；不能协商一致，又无正当理由的，任何一方不得阻止他方行使除转让、许可他人专有使用、出质以外的其他权利，但是所得收益应当合理分配给所有合作作者。
+> 合作作品可以分割使用的，作者对各自创作的部分可以单独享有著作权，但行使著作权时不得侵犯合作作品整体的著作权。
+
+- 效力状态：**有效**（知识库 `status: 有效`，公布日期 2020-11-11）
+- 关联声明：第二节「角色声明」——两位署名作者共同享有著作权
+
+### 5.2 《中华人民共和国商标法》第五十九条（正当使用）
+
+> 注册商标中含有的本商品的通用名称、图形、型号，或者直接表示商品的质量、主要原料、功能、用途、重量、数量及其他特点，或者含有的地名，注册商标专用权人无权禁止他人正当使用。
+
+- 效力状态：**有效**（知识库检索核验）
+- 关联声明：第三节「商标与名称使用声明」——对商标的描述性、指示性使用
+
+### 5.3 检索与核验说明
+
+- 检索工具：国家法律法规知识库（`search_knowledge.py`）
+- 核验原则：仅收录知识库返回确切原文且标注「有效」的条文；未采用检索结果与声明主题不吻合的条文（如商标相同/近似判定、授权确权条款）。
+- 局限：AI 辅助检索与整理，**不构成法律意见**，不保证覆盖所有相关法规或最新修订。建议使用前访问官方渠道 <https://flk.npc.gov.cn/>（国家法律法规数据库）复核。
+
+**English**
+
+The statutory texts in this section were retrieved and cross-checked for validity status via a national laws and regulations knowledge base, as reference support for the notices above. **This is not formal legal advice**; application depends on the latest official texts and judicial practice. Consult a licensed attorney for any dispute.
+
+- Article 14 of the *Copyright Law of the PRC* (joint works) — status: in force — supports Section 2 (Role and Authorship Disclosure).
+- Article 59 of the *Trademark Law of the PRC* (legitimate/descriptive use) — status: in force — supports Section 3 (Trademark and Name Usage).
+- Limitation: AI-assisted retrieval and summarization; not legal advice, not exhaustive, and may not reflect the latest amendments. Verify at the official database <https://flk.npc.gov.cn/>.
+
+---
+
+## 六、联系方式 / Contact
 
 如对上述声明有任何疑问，或任何权利人认为本项目存在不当使用，请通过本仓库的 GitHub Issues 联系作者：
 
@@ -111,3 +155,11 @@ All trademarks, service marks, product names, and brand names mentioned or refer
 For questions regarding these notices, or if any rights holder believes this project contains inappropriate usage, please contact the authors via GitHub Issues:
 
 <https://github.com/sly418/dsh-android-webview/issues>
+
+---
+
+> **⚠️ 法律提示与免责声明（Legal Notice）**
+>
+> 本文件及本项目中的法律性表述仅为**声明与参考信息**，**不构成正式法律意见书**，也不对任何争议结果作出承诺。法律法规可能随时修订，条文引用以官方最新文本及司法实践为准。本文件不替代执业律师的专业意见；如涉及实际纠纷、商标或著作权争议，请携带完整材料咨询执业律师。
+>
+> This file and the legal statements in this project are **notices and reference information only**. They **do not constitute a formal legal opinion** and make no commitment as to the outcome of any dispute. Laws may be amended; citations are subject to the latest official texts and judicial practice. This file does not replace professional advice from a licensed attorney.
