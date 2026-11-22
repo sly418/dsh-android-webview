@@ -50,9 +50,16 @@
 
 ### 环境要求
 
-- **JDK 17+**
-- **Android SDK**：compileSdk 37、build-tools 36.0.0、Android Gradle Plugin 9.5.2
+- **JDK 25**（实际构建验证环境为 OpenJDK 25.0.4 / Android Studio 2026.2.2 自带 JBR）
+  - 注意：源码 `sourceCompatibility` 为 Java 17，但 **Gradle 9.9.2 需要 JDK 17+ 且 AGP 9.5.2 实测在 JDK 25 下构建通过**；用 JDK 17 能否成功未经本项目验证，建议直接用 JDK 25 以复现本文结果。
+- **Android SDK**：compileSdk 37、build-tools 36.0.0、Android Gradle Plugin 9.5.2（版本见 `build.gradle` 与 `settings.gradle`）
 - **Git LFS**（clone 时必须安装，否则大文件只有指针）
+
+### 依赖版本与可复现性
+
+构建工具链版本已固定：Gradle **9.9.2**（`gradle/wrapper/gradle-wrapper.properties`）、AGP **9.5.2**（根 `build.gradle`）、Shizuku API/provider **13.1.5**（本地 AAR，位于 `app/libs/`，**不依赖网络下载**）。第三方运行时（dsh、Node.js、npm 依赖树）以 **dsh.zip 形式随仓库固定打包**，版本不随构建漂移。
+
+因此本项目的**代码与运行时资源是可复现的**（同一 commit 拿到的是同一份 dsh.zip）。需注意的边界：Gradle/AGP 从 `google()` / `mavenCentral()` 在线解析，若这些仓库未来下线对应版本则无法构建；此类外部依赖不在本项目控制范围内。
 
 ### 方式一：local.properties（推荐）
 
@@ -74,12 +81,26 @@ Windows 示例：`sdk.dir=C\:\\Users\\你的用户名\\AppData\\Local\\Android\\
 不创建 local.properties 也可以，直接设置环境变量：
 
 ```bash
-export JAVA_HOME=/path/to/jdk17      # Windows: set JAVA_HOME=...
+export JAVA_HOME=/path/to/jdk25      # Windows: set JAVA_HOME=...；本文验证环境为 JDK 25
 export ANDROID_HOME=/path/to/android-sdk
 ./gradlew assembleDebug              # Windows: gradlew.bat assembleDebug
 ```
 
 产物：`app/build/outputs/apk/debug/app-debug.apk`
+
+### 构建校验流程
+
+构建完成后，用随仓库提供的脚本校验 APK 的完整性、关键资源与 SHA-256（仅需 Python 3，无第三方依赖）：
+
+```bash
+python tools/verify_apk.py app/build/outputs/apk/debug/app-debug.apk
+# 与已知构建的 SHA-256 比对：
+python tools/verify_apk.py app/build/outputs/apk/debug/app-debug.apk --sha256 <期望的SHA256>
+```
+
+脚本检查：ZIP 完整性、AndroidManifest / classes*.dex / dsh.zip / shellruntime.zip 是否齐全、dsh.zip 是否为真实的 Git LFS 内容（而非未拉取的指针文件），并输出 SHA-256。全部通过时打印 `RESULT: PASS`，退出码 0。
+
+可选：用 Android SDK 的 `aapt dump badging <apk>` 核对 `versionName` / `versionCode` / 包名，用 `apksigner verify --print-certs <apk>` 核对签名（这两个工具需要 JDK 与 SDK build-tools）。
 
 ## 使用
 
@@ -108,6 +129,9 @@ app/src/main/
 - **异常恢复**：保存最近 URL、启动模式与启动状态；进程重建后自动重启运行时并提示用户。仅保存非敏感启动元数据，不含 API Key 或会话内容。
 - **Shizuku 权限**：监听 binder 死亡与重新授权，服务重启后自动切回 shell 模式；授权撤销时降级普通模式。
 - **环境自检**：启动前检查 Node 可执行文件、兼容层、动态库、工作目录与 CA 证书，缺失时给出精确错误而非笼统的"进程退出"。
+- **日志分类**：应用自身事件按四类分别记录到 `filesDir/logs/` 下：`app-startup.log`（启动）、`app-permission.log`（Shizuku 权限）、`app-runtime.log`（运行）、`app-error.log`（异常）；dsh 运行时自身的 stdout/stderr 仍在 `dsh.log` / `dsh-shell.log`。应用内「查看运行日志」显示内存中的最近日志。
+- **资源占用采样**：内置低频采样器，每 30 秒把内存（PSS/RSS）、CPU 占用率、设备温度、可用内存写入 `filesDir/logs/app-resources.log`（带时间戳）。可用于对比空闲、连续对话、文件处理等场景下的资源表现。采样为只读、独立线程，不影响运行时。
+  - 查看：`adb shell "run-as com.deepseek.dshwebview cat files/logs/app-resources.log"`（debug 包可调 `run-as`），或在文件管理器中查看应用私有目录（需 root）。
 
 ## 已知限制
 

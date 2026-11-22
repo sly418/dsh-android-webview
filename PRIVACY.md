@@ -77,7 +77,20 @@ dsh 运行时中硬编码了以下官方域名：
 
 这些是 dsh 核心功能所必需。未登录且未配置 API Key 时，不会发生模型调用。
 
-### 2.3 本地回环服务
+### 2.3 主动反馈上传（用户主动操作，仅本地记录）
+
+dsh 提供消息/会话反馈功能（对回答点赞点踩、提交分类与备注，UI 模块 `dsh-client-ui-message-feedback`），入口为 `/feedback` 命令或消息上的反馈按钮。对其宿主实现的审查结论：
+
+| 项 | 结论 |
+|---|---|
+| 触发方式 | **仅用户主动点击**反馈按钮/命令，不会自动触发 |
+| 数据处理 | `dsh-command-feedback` 的 `feedback/record` 事件原文："appends one authoritative log-only event and does not start model work"（仅追加一条日志事件，不启动模型工作）；`dsh-message-feedback` 为 "Canonical Session-log feedback"（写入 Session 日志） |
+| 网络请求 | 两个模块的源码中**均无** `fetch` / `http.request` / 上传端点等网络调用；反馈写入本地 Session sidecar（本地持久化） |
+| 与遥测的区别 | 反馈是**用户主动、仅本地记录**；遥测是**自动、发往 DeepSeek 收集端**（且本项目 Android 端不激活）。二者行为不同，不应混为一谈 |
+
+结论：**本项目中的反馈功能不会主动上传任何数据到网络**；它只在本地 Session 日志中记录用户的反馈条目。
+
+### 2.4 本地回环服务
 
 dsh 在设备本机监听 `127.0.0.1`（HTTP），仅用于 App 内 WebView 访问，不对外部网络开放。网络安全配置（`res/xml/network_security_config.xml`）仅对 `127.0.0.1` 与 `localhost` 放行明文流量，其余域名走 HTTPS。
 
@@ -101,4 +114,5 @@ dsh 在设备本机监听 `127.0.0.1`（HTTP），仅用于 App 内 WebView 访�
 - The Android shell code communicates only with `127.0.0.1`; no hidden outbound connections, no sensitive permissions.
 - The bundled dsh runtime contains DeepSeek's official product-telemetry modules, but they are **desktop-only** and are **not mounted by the Web frontend used here** — static analysis of all 61 frontend bundles found zero references. No telemetry is emitted from this Android app.
 - dsh connects to official DeepSeek API domains (`api.deepseek.com`, `harness.deepseek.com`, `platform.deepseek.com`) for login and model calls — core functionality only.
+- The user-triggered `/feedback` feature records entries to the **local** Session log only; its host modules contain no network calls. It does not upload anything. This is distinct from the automatic telemetry above.
 - Static review; no dynamic packet capture performed. See `DISCLAIMER.md` for non-affiliation notice.

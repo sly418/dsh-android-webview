@@ -80,11 +80,15 @@ public class DshService extends Service {
     private volatile String advertisedUrl;
     private PowerManager.WakeLock wakeLock;
 
+    private ResourceSampler resourceSampler;
+
     @Override
     public void onCreate() {
         super.onCreate();
         createChannel();
         startForeground(1, buildNotification("DeepSeek Harness 服务正在启动"));
+        resourceSampler = new ResourceSampler(this);
+        resourceSampler.start();
     }
 
     @Override
@@ -103,6 +107,7 @@ public class DshService extends Service {
     @Override
     public void onDestroy() {
         listeners.clear();
+        if (resourceSampler != null) resourceSampler.stop();
         stopProcess();
         releaseWakeLock();
         executor.shutdownNow();
@@ -230,6 +235,7 @@ public class DshService extends Service {
 
         final int myGeneration = generation.incrementAndGet();
         AppState.noteLaunchAttempt(this);
+        AppLogger.startup(this, "启动尝试 #" + myGeneration);
         acquireWakeLock();
         setState(State.INSTALLING, getString(R.string.status_installing));
 
@@ -245,12 +251,14 @@ public class DshService extends Service {
                     try {
                         p = ShizukuLauncher.start(this, new File(logs, "dsh-shell.log"), 3080);
                         appendLine(new File(logs, "dsh-shell.log"), "[info] Shizuku shell 模式已启动");
+                        AppLogger.permission(this, "Shizuku 授权有效，以 shell 权限启动成功");
                         AppState.saveMode(this, "shizuku");
                     } catch (Exception se) {
                         // Shizuku failed; record why and fall back to normal mode
                         // so the app still works.
                         String why = se.getMessage() == null ? se.getClass().getSimpleName() : se.getMessage();
                         appendLine(new File(logs, "dsh-shell.log"), "[shizuku-failed] " + why);
+                        AppLogger.permission(this, "Shizuku 启动失败，降级普通模式：" + why);
                         shizuku = false;
                         p = null;
                     }
@@ -366,6 +374,7 @@ public class DshService extends Service {
                         }
                         appendLine(new File(logs, "dsh.log"),
                                 "[warn] 进程可能已退出 code=" + code + "，继续等待服务就绪…");
+                        AppLogger.runtime(this, "进程退出码 " + code + "，继续等待服务就绪");
                     }
                 }
                 if (myGeneration != generation.get()) return;
@@ -374,6 +383,7 @@ public class DshService extends Service {
                 // without surfacing FAILED so no error panel flashes.
                 if (silentRetryUsed.compareAndSet(false, true)) {
                     appendLine(new File(logs, "dsh.log"), "[info] 服务未就绪，静默自愈重启一次");
+                    AppLogger.runtime(this, "服务未就绪，静默自愈重启一次");
                     stopProcess();
                     restart();
                     return;
@@ -383,6 +393,7 @@ public class DshService extends Service {
                     throw new IOException("服务已启动但未捕获到 tokenized URL，请查看 logs/dsh.log");
                 }
 
+                AppLogger.startup(this, "服务就绪，generation #" + myGeneration);
                 setState(State.READY, getString(R.string.status_ready), myGeneration);
                 final String readyUrl = advertisedUrl;
                 AppState.saveUrl(this, readyUrl);
@@ -405,6 +416,7 @@ public class DshService extends Service {
                     if (!tail.isEmpty()) detail += "\n--- 最近日志 ---\n" + tail;
                 }
                 lastError = detail;
+                AppLogger.error(this, "启动失败：" + detail);
                 setState(State.FAILED, detail, myGeneration);
                 AppState.saveState(this, "FAILED", detail);
                 updateNotification("DeepSeek Harness 启动失败");

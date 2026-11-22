@@ -96,6 +96,7 @@ public class MainActivity extends Activity {
                         return; // already running in shell mode, nothing changed
                     }
                     shizukuGrantHandled = true;
+                    AppLogger.permission(this, "用户授予 Shizuku 权限");
                     Toast.makeText(this, "Shizuku 已授权，正在以 shell 权限重启…", Toast.LENGTH_SHORT).show();
                     if (service != null) {
                         loadedUrl = null;
@@ -103,6 +104,7 @@ public class MainActivity extends Activity {
                         service.restart();
                     }
                 } else {
+                    AppLogger.permission(this, "未获得 Shizuku 授权，使用普通模式");
                     Toast.makeText(this, "未获得 Shizuku 授权，将使用普通模式", Toast.LENGTH_LONG).show();
                 }
             };
@@ -115,6 +117,7 @@ public class MainActivity extends Activity {
     private final Shizuku.OnBinderDeadListener binderDeadListener = () -> {
         // Mark that a re-grant should be acted on even if we previously did so.
         shizukuGrantHandled = false;
+        AppLogger.permission(this, "Shizuku binder 断开，等待重新授权");
     };
 
     // The binder arrives once per process. Only ask for permission, never
