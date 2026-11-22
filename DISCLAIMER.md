@@ -1,6 +1,6 @@
 # 声明与免责 / Disclaimers and Notices
 
-> 本文件是本项目法律立场与身份边界的权威说明。项目许可见 [`LICENSE`](LICENSE)，第三方组件许可见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+> 本文件是本项目法律立场与身份边界的权威说明。项目许可见 [`LICENSE`](LICENSE)，第三方组件许可见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)，遥测与数据流向见 [`PRIVACY.md`](PRIVACY.md)。
 
 ---
 

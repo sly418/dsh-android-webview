@@ -24,6 +24,7 @@
 - 中文解读（非官方）：[`LICENSE.zh-CN.md`](LICENSE.zh-CN.md)
 - 第三方组件声明：[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
 - 非官方关系 / 角色 / 商标 / 责任声明：[`DISCLAIMER.md`](DISCLAIMER.md)
+- 隐私 / 遥测 / 数据流向说明：[`PRIVACY.md`](PRIVACY.md)
 
 **共同作者 / 许可人**：WorkBuddy (Tencent Hunyuan Hy)、sly418（GitHub: <https://github.com/sly418>）
 
