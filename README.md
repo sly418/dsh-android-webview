@@ -14,6 +14,18 @@
 - **Android 兼容层**：`android-compat.cjs` shim 处理 Android SELinux 禁止硬链接等问题。
 - **移动端适配**：安全区（状态栏/刘海）处理、触控目标与字号优化、响应式布局。
 
+### 2.0.1 新增：设备能力工具层（MCP）
+
+- **MCP 工具层**：通过 dsh 原生的 `streamable-http` MCP 接入（`--patch` 挂载），把 Android 能力注册成 dsh 可调用的工具，无需改动 dsh 核心。工具集完全自研：
+  - `get_battery`（电量）、`vibrate`（震动）、`notify`（通知）、`get_clipboard`（剪贴板）
+  - `capture_photo`（摄像头拍照 → 标准 ImageContent 交给模型）、`capture_screen`（截屏 → 模型）
+  - `transcribe_audio`（语音转文字，实验性）
+- **快捷工具面板**：界面右下角 ⚙ 按钮展开，一键调用上述设备能力，结果以提示或图片预览呈现。
+- **科技风皮肤**：默认深色科技风，右上角 ✦ 按钮可在「科技风 / 原版」间一键切换并记住选择。皮肤通过覆盖 dsh 的设计令牌实现，**不改动 dsh 的 DOM 或原有功能**，随时可切回官方原版界面。
+- **状态栏主题联动**：切换界面主题时原生状态栏图标颜色同步适配。
+
+> 说明：语音的离线模型（内置 sherpa-onnx）仍在完善中，当前 `transcribe_audio` 为实验性功能。数据流向详见 [`PRIVACY.md`](PRIVACY.md)。
+
 ## 许可
 
 本项目原创部分（Android 壳、构建脚本、文档及本打包成品）采用 **PolyForm Noncommercial License 1.0.0** —— 可免费使用、修改、分发，但**仅限非商业目的**，分发须保留署名声明，二改版本同样不可商用。

@@ -111,12 +111,16 @@ public final class ShizukuLauncher {
 
     private static String buildScript(String apk, String nativeLib, int port) {
         String sh = SHARED_DIR;
+        // Bump this whenever bundled runtime assets change (MCP tools, CSS, etc.)
+        // so existing installs re-extract instead of reusing a stale shared dir.
+        final String runtimeVersion = "v12.1-ui";
         // Keep everything on one shell script so a single newProcess call does it all.
         // 'set -e' is intentionally omitted: some probes may fail harmlessly.
         return ""
                 + "D=" + sh + "\n"
                 + "APK='" + apk + "'\n"
                 + "LIB='" + nativeLib + "'\n"
+                + "RV='" + runtimeVersion + "'\n"
                 + "mkdir -p $D/tmp $D/home $D/dsh-home $D/xdg-config $D/xdg-data $D/workspace $D/logs\n"
                 + "cd $D\n"
                 // Extract dsh.zip when missing OR when the safe-area stylesheet
@@ -124,13 +128,19 @@ public final class ShizukuLauncher {
                 // content itself so the runtime self-heals without a version file.
                 + "CSS=$D/dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-CSAdOBx6.css\n"
                 + "if [ ! -f $D/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js ]"
-                + " || ! grep -q 'safe-area adaptation === v10' \"$CSS\" 2>/dev/null; then\n"
+                + " || ! grep -q 'safe-area adaptation === v10' \"$CSS\" 2>/dev/null"
+                + " || [ ! -f $D/android-mcp/android-mcp.mjs ]"
+                + " || [ \"$(cat $D/.runtime-version 2>/dev/null)\" != \"$RV\" ]; then\n"
                 + "  rm -rf $D/dsh $D/.dsh.tmp\n"
                 + "  mkdir -p $D/.dsh.tmp\n"
                 + "  unzip -p \"$APK\" assets/runtime/dsh.zip > $D/.dsh.zip\n"
                 + "  unzip -q $D/.dsh.zip -d $D/.dsh.tmp\n"
                 + "  mv $D/.dsh.tmp/dsh $D/dsh\n"
+                // Extract the Android device MCP server (top-level android-mcp/).
+                + "  rm -rf $D/android-mcp\n"
+                + "  if [ -d $D/.dsh.tmp/android-mcp ]; then mv $D/.dsh.tmp/android-mcp $D/android-mcp; fi\n"
                 + "  rm -rf $D/.dsh.tmp $D/.dsh.zip\n"
+                + "  echo \"$RV\" > $D/.runtime-version\n"
                 + "fi\n"
                 + "if [ ! -x $D/shell/bin/bash ]; then\n"
                 + "  rm -rf $D/shell $D/.shell.tmp\n"
@@ -165,6 +175,7 @@ public final class ShizukuLauncher {
                 + "done\n"
                 + "cd $D/workspace\n"
                 + "exec \"$LIB/libnodeexec.so\" --expose-internals --require \"$SHIM\" \"$ENTRY\""
-                + " --profile web --no-open --host 127.0.0.1 --port " + port + "\n";
+                + " --profile web --patch \"$D/android-mcp/android-device-mcp.patch.yml\""
+                + " --no-open --host 127.0.0.1 --port " + port + "\n";
     }
 }

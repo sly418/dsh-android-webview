@@ -30,11 +30,20 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.JavascriptInterface;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 
 import rikka.shizuku.Shizuku;
 
@@ -43,6 +52,7 @@ public class MainActivity extends Activity {
 
     private static final int REQ_FILE_CHOOSER = 1001;
     private static final int REQ_NOTIFICATION = 1002;
+    private static final int REQ_DEVICE_PERMISSIONS = 1004;
 
     private WebView webView;
     private LinearLayout statusBar;
@@ -154,6 +164,7 @@ public class MainActivity extends Activity {
 
         configureWebView();
         requestNotificationPermission();
+        requestDevicePermissions();
 
         // Detect a previous session that was interrupted (service killed while
         // in background). The service will restart; we just inform the user.
@@ -187,11 +198,9 @@ public class MainActivity extends Activity {
             window.setNavigationBarColor(Color.TRANSPARENT);
         }
         View decor = window.getDecorView();
+        // Dark tech theme: keep light status-bar icons (do NOT set LIGHT_STATUS_BAR).
         int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-        }
         decor.setSystemUiVisibility(flags);
         // Note: no top padding on the WebView here. Shifting fixed page elements
         // is done in CSS; padding the WebView would not move fixed elements.
@@ -204,6 +213,69 @@ public class MainActivity extends Activity {
     }
 
     private void configureWebView() {
+        // Bridge for the tech-skin tool panel: lets injected JS invoke device
+        // capabilities through the local DeviceBridge HTTP API without CORS.
+        webView.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void callDeviceTool(final String tool, final String argsJson, final String callbackId) {
+                new Thread(() -> {
+                    String result;
+                    HttpURLConnection conn = null;
+                    try {
+                        String body = argsJson == null || argsJson.isEmpty()
+                                ? "{\"tool\":\"" + tool + "\"}"
+                                : argsJson.substring(0, argsJson.length() - 1) + ",\"tool\":\"" + tool + "\"}";
+                        URL url = new URL("http://127.0.0.1:3001/tool");
+                        conn = (HttpURLConnection) url.openConnection();
+                        conn.setRequestMethod("POST");
+                        conn.setConnectTimeout(4000);
+                        conn.setReadTimeout(30000);
+                        conn.setDoOutput(true);
+                        conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                        byte[] out = body.getBytes(StandardCharsets.UTF_8);
+                        conn.setFixedLengthStreamingMode(out.length);
+                        OutputStream os = conn.getOutputStream();
+                        os.write(out);
+                        os.flush();
+                        os.close();
+                        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                        InputStream is = conn.getInputStream();
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
+                        is.close();
+                        result = bos.toString("UTF-8");
+                    } catch (Exception e) {
+                        result = "{\"error\":\"" + String.valueOf(e.getMessage()).replace("\\", " ")
+                                .replace("\"", "'").replace("\n", " ") + "\"}";
+                    } finally {
+                        if (conn != null) conn.disconnect();
+                    }
+                    final String safe = result.replace("\\", "\\\\").replace("'", "\\'")
+                            .replace("\n", "\\n").replace("\r", "");
+                    final String cb = callbackId.replaceAll("[^0-9A-Za-z]", "");
+                    webView.post(() -> webView.evaluateJavascript(
+                            "window.__dshToolCb && window.__dshToolCb('" + cb + "','" + safe + "');", null));
+                }, "dsh-tool-bridge").start();
+            }
+        }, "DshDevice");
+
+        // Lets the skin toggle keep the native status bar in sync with the
+        // chosen Web UI theme (dark icons on light UI, light icons on dark UI).
+        webView.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void setStatusBarLight(final boolean light) {
+                runOnUiThread(() -> {
+                    try {
+                        View decor = getWindow().getDecorView();
+                        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
+                        if (light) flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                        decor.setSystemUiVisibility(flags);
+                    } catch (Throwable ignored) { }
+                });
+            }
+        }, "DshUiTheme");
+
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -246,6 +318,7 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 progress.setProgress(100);
                 injectMobileCss();
+                injectWebSkin();
                 hideWithAnim(statusBar, R.anim.slide_out_top);
             }
 
@@ -403,6 +476,41 @@ public class MainActivity extends Activity {
         webView.evaluateJavascript(js, null);
     }
 
+    /** Load and inject the optional "tech skin" JS layered over dsh's Web UI. */
+    private void injectWebSkin() {
+        String skin = readAsset("web/tech-skin.js");
+        if (skin != null && !skin.isEmpty()) {
+            webView.evaluateJavascript(skin, null);
+        }
+        String panel = readAsset("web/device-panel.js");
+        if (panel != null && !panel.isEmpty()) {
+            webView.evaluateJavascript(panel, null);
+        }
+        // dsh is a SPA; re-assert after route paint so overlays always exist.
+        webView.postDelayed(() -> {
+            if (skin != null && !skin.isEmpty()) webView.evaluateJavascript(skin, null);
+            if (panel != null && !panel.isEmpty()) webView.evaluateJavascript(panel, null);
+        }, 900);
+    }
+
+    private String readAsset(String path) {
+        InputStream in = null;
+        try {
+            in = getAssets().open(path);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            return out.toString("UTF-8");
+        } catch (IOException e) {
+            return null;
+        } finally {
+            if (in != null) {
+                try { in.close(); } catch (IOException ignored) { }
+            }
+        }
+    }
+
     private void showError(String message) {
         errorText.setText(getString(R.string.status_failed) + "\n" + (message == null ? "" : message));
         showWithAnim(errorPanel, R.anim.pop_in);
@@ -444,9 +552,24 @@ public class MainActivity extends Activity {
         requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFICATION);
     }
 
+    /** Runtime permissions for the optional camera / voice MCP tools. */
+    private void requestDevicePermissions() {
+        java.util.List<String> needed = new java.util.ArrayList<>();
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.CAMERA);
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.RECORD_AUDIO);
+        }
+        if (!needed.isEmpty()) {
+            requestPermissions(needed.toArray(new String[0]), REQ_DEVICE_PERMISSIONS);
+        }
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_DEVICE_PERMISSIONS) return;
         if (requestCode != REQ_NOTIFICATION) return;
         boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
         if (!granted) Toast.makeText(this, R.string.notification_permission_denied, Toast.LENGTH_LONG).show();

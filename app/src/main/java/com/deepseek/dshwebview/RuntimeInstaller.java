@@ -25,7 +25,7 @@ import java.util.zip.ZipInputStream;
  */
 public final class RuntimeInstaller {
 
-    private static final String VERSION = "dsh-0.2.2-rc.5-android-link-shim-v10-safearea";
+    private static final String VERSION = "dsh-0.2.2-rc.5-android-link-shim-v12.1-ui";
 
     private RuntimeInstaller() {
     }
@@ -180,6 +180,16 @@ public final class RuntimeInstaller {
                 }
                 if (dsh(c).exists() && !dsh(c).renameTo(old)) throw new IOException("无法替换旧版 dsh");
                 if (!stagedDsh.renameTo(dsh(c))) throw new IOException("无法安装 DeepSeek Harness");
+                // Install the Android device MCP server (top-level android-mcp/
+                // in dsh.zip), used by the 2.0.1 tool layer.
+                File stagedMcp = new File(staging, "android-mcp");
+                File installedMcp = new File(root, "android-mcp");
+                if (stagedMcp.isDirectory()) {
+                    deleteRecursive(installedMcp);
+                    if (!stagedMcp.renameTo(installedMcp)) {
+                        throw new IOException("无法安装 Android MCP server");
+                    }
+                }
                 writeAll(marker, VERSION);
             } finally {
                 deleteRecursive(staging);

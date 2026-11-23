@@ -74,6 +74,8 @@ public class DshService extends Service {
     private final AtomicBoolean silentRetryUsed = new AtomicBoolean(false);
 
     private Process process;
+    private Process mcpProcess;
+    private DeviceBridge deviceBridge;
     private volatile State state = State.IDLE;
     private volatile String message = "";
     private volatile String lastError = "";
@@ -89,6 +91,9 @@ public class DshService extends Service {
         startForeground(1, buildNotification("DeepSeek Harness 服务正在启动"));
         resourceSampler = new ResourceSampler(this);
         resourceSampler.start();
+        // Android device tool bridge (localhost only) for the MCP tool layer.
+        deviceBridge = new DeviceBridge(this);
+        deviceBridge.start();
     }
 
     @Override
@@ -108,6 +113,8 @@ public class DshService extends Service {
     public void onDestroy() {
         listeners.clear();
         if (resourceSampler != null) resourceSampler.stop();
+        stopMcpServer();
+        if (deviceBridge != null) deviceBridge.stop();
         stopProcess();
         releaseWakeLock();
         executor.shutdownNow();
@@ -228,6 +235,77 @@ public class DshService extends Service {
         }
     }
 
+    /**
+     * Start the Android device MCP server (streamable-http on 127.0.0.1:3000).
+     * It runs under the app's own privileges: it only translates MCP protocol
+     * calls into requests to the Java DeviceBridge, which owns Android
+     * permissions. dsh connects to it through a --patch plugin.
+     */
+    private void startMcpServer() {
+        stopMcpServer();
+        try {
+            File dshDir = RuntimeInstaller.dsh(this);
+            // In Shizuku mode the runtime lives in the shared dir; the MCP
+            // server files are extracted there by the shell script.
+            File sharedMcp = new File("/data/local/tmp/dshwebview-shared/android-mcp/android-mcp.mjs");
+            if (sharedMcp.isFile()) {
+                dshDir = new File("/data/local/tmp/dshwebview-shared/dsh");
+            } else {
+                RuntimeInstaller.ensureInstalled(this, msg -> { });
+            }
+            File node = RuntimeInstaller.nodeExecutable(this);
+            File entry = new File(dshDir.getParentFile(),
+                    "android-mcp/android-mcp.mjs");
+            if (!node.isFile() || !entry.isFile()) {
+                AppLogger.error(this, "MCP server files missing; tool layer disabled");
+                return;
+            }
+            File logs = RuntimeInstaller.logs(this);
+            File compatShim = new File(dshDir,
+                    "node_modules/@deepseek-ai/android-compat.cjs");
+            ProcessBuilder pb = new ProcessBuilder(
+                    node.getAbsolutePath(),
+                    "--expose-internals",
+                    "--require", compatShim.getAbsolutePath(),
+                    entry.getAbsolutePath());
+            pb.directory(RuntimeInstaller.workspace(this));
+            pb.redirectErrorStream(true);
+            pb.redirectOutput(new File(logs, "android-mcp.log"));
+            Map<String, String> env = pb.environment();
+            env.put("HOME", RuntimeInstaller.home(this).getAbsolutePath());
+            env.put("TMPDIR", RuntimeInstaller.tmp(this).getAbsolutePath());
+            env.put("PATH", new File(getApplicationInfo().nativeLibraryDir).getAbsolutePath()
+                    + File.pathSeparator + "/system/bin:/system/xbin");
+            env.put("LD_LIBRARY_PATH", RuntimeInstaller.libraryPath(this));
+            env.put("NODE_NO_WARNINGS", "1");
+            mcpProcess = pb.start();
+            AppLogger.runtime(this, "Android device MCP server started");
+        } catch (Exception e) {
+            AppLogger.error(this, "MCP server start failed: " + e.getMessage());
+        }
+    }
+
+    private void stopMcpServer() {
+        Process p = mcpProcess;
+        mcpProcess = null;
+        if (p == null) return;
+        try {
+            if (isAlive(p)) p.destroy();
+        } catch (Throwable ignored) {
+        }
+        try {
+            if (!p.waitFor(2000, TimeUnit.MILLISECONDS)) {
+                try {
+                    if (isAlive(p)) p.destroyForcibly();
+                } catch (Throwable ignored) {
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Throwable ignored) {
+        }
+    }
+
     private void startRuntime() {
         // Atomic gate prevents duplicate starts from onStartCommand + restart,
         // and from repeated bind events after process recreation.
@@ -242,6 +320,9 @@ public class DshService extends Service {
         executor.execute(() -> {
             try {
                 File logs = RuntimeInstaller.logs(this);
+                // Android device MCP server runs in the app process regardless
+                // of shell mode: it only relays protocol to the Java bridge.
+                startMcpServer();
                 Process p;
                 boolean shizuku = ShizukuLauncher.isAvailable();
                 if (shizuku) {
@@ -292,6 +373,8 @@ public class DshService extends Service {
                         if (!d.exists() && !d.mkdirs()) throw new IOException("无法创建目录：" + d.getName());
                     }
 
+                    File mcpPatch = new File(RuntimeInstaller.dsh(this).getParentFile(),
+                            "android-mcp/android-device-mcp.patch.yml");
                     File compatShim = new File(RuntimeInstaller.dsh(this),
                             "node_modules/@deepseek-ai/android-compat.cjs");
                     ProcessBuilder pb = new ProcessBuilder(
@@ -300,6 +383,7 @@ public class DshService extends Service {
                             "--require", compatShim.getAbsolutePath(),
                             dshEntry.getAbsolutePath(),
                             "--profile", "web",
+                            "--patch", mcpPatch.getAbsolutePath(),
                             "--no-open",
                             "--host", "127.0.0.1",
                             "--port", "3080");
